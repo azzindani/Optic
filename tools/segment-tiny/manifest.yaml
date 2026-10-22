@@ -1,0 +1,14 @@
+id: segment-tiny
+version: sam2.1-hiera-tiny
+backend: transformers
+# PROVISIONAL — confirm via nvidia-smi (39M params; expect ~1GB with headroom).
+vram_gb: 1
+tier: tiny
+description: "Live segmentation: box-prompted SAM2 masks (~1s) + auto-mask. Returns boxes for overlay."
+inputs: ["image", "frame"]
+outputs: ["boxes"]
+sidecar:
+  env: SEGMENT_URL
+  health: "GET /health"
+  infer: "POST /infer {image_b64, boxes_1000?: [x0,y0,x1,y1][]} -> {boxes: [{x,y,w,h,kind,label,conf}]}"
+deploy: "v1: host process (python3 server.py, :8004) — torch cu126 + transformers already on host. Containerize later."

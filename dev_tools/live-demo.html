@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Live extraction demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 12px; background: #111; color: #eee; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #stage { position: relative; }
+  #src { max-width: 100%; display: block; }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #markdown { white-space: pre-wrap; font-size: 12px; height: 70vh; overflow: auto; background: #000; padding: 8px; }
+  #status { color: #8f8; }
+  #legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: #aaa; margin: 6px 0; }
+  #legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+</style>
+</head>
+<body>
+<h1>Live extraction <span id="status">starting…</span></h1>
+<div id="legend"></div>
+<div class="grid">
+  <div id="stage"><img id="src" src="/demo-table.png" /><canvas id="overlay"></canvas></div>
+  <div id="markdown"></div>
+</div>
+<script>
+const GW = "http://127.0.0.1:3109";
+const $ = (id) => document.getElementById(id);
+const log = $("markdown"), status = $("status"), legend = $("legend");
+const img = $("src"), overlay = $("overlay");
+
+async function main() {
+  await fetch(`${GW}/v1/tools/turbo-tiny/load`, { method: "POST" });
+  const job = await (await fetch(`${GW}/v1/jobs`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ tool_id: "turbo-tiny", mode: "live" }),
+  })).json();
+  status.textContent = "live " + job.id.slice(0, 8);
+
+  const src = new EventSource(`${GW}/v1/jobs/${job.id}/events`);
+  const PALETTE = {
+    text: "#3fb950", "layout:table": "#58a6ff", "layout:figure": "#bc8cff",
+    "layout:title": "#d29922", "entity:date": "#39c5cf", "entity:amount": "#f0883e",
+    "entity:invoice_no": "#e3b341", "entity:email": "#7ee787",
+  };
+  const colorFor = (kind) => {
+    if (!kind) return PALETTE.text;
+    if (PALETTE[kind]) return PALETTE[kind];
+    if (kind.startsWith("entity:")) return "#e3b341";
+    if (kind.startsWith("layout:")) return "#58a6ff";
+    return PALETTE.text;
+  };
+  src.addEventListener("box", (ev) => {
+    const { boxes } = JSON.parse(ev.data);
+    const kinds = [...new Set(boxes.map((b) => b.kind || "text"))];
+    legend.innerHTML = kinds.map((k) =>
+      `<span><i style="background:${colorFor(k)}"></i>${k}</span>`).join("");
+    const ctx = overlay.getContext("2d");
+    overlay.width = img.naturalWidth; overlay.height = img.naturalHeight;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    for (const b of boxes) {
+      const color = colorFor(b.kind);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = (b.kind || "").startsWith("entity:") ? 3 : 2;
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      if ((b.kind || "").startsWith("entity:") && b.label) {
+        ctx.font = "14px system-ui, sans-serif";
+        const tw = ctx.measureText(b.label).width;
+        const ty = Math.max(0, b.y - 20);
+        ctx.fillStyle = color;
+        ctx.fillRect(b.x, ty, tw + 8, 20);
+        ctx.fillStyle = "#000";
+        ctx.fillText(b.label, b.x + 4, ty + 15);
+      }
+    }
+  });
+  src.addEventListener("markdown", (ev) => {
+    const { text } = JSON.parse(ev.data);
+    log.textContent += text + "\n";
+    log.scrollTop = log.scrollHeight;
+  });
+
+  // Feed frames from the displayed image at 2 fps (simulated camera).
+  const c = document.createElement("canvas");
+  await img.decode();
+  const feed = async () => {
+    const s = Math.min(1, 960 / Math.max(img.naturalWidth, img.naturalHeight));
+    c.width = img.naturalWidth * s; c.height = img.naturalHeight * s;
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    await fetch(`${GW}/v1/jobs/${job.id}/frames`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jpeg: c.toDataURL("image/jpeg", 0.85) }),
+    });
+  };
+  await feed();
+  setInterval(feed, 2000);
+}
+main();
+</script>
+</body>
+</html>

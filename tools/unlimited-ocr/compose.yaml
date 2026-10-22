@@ -1,0 +1,66 @@
+# Unlimited-OCR sidecar. NOT started by default — exclusive-load lane.
+# Tomorrow: docker compose -f tools/unlimited-ocr/compose.yaml up -d
+# (after `docker stop turboocr`), then check nvidia-smi resident size
+# against manifest vram_gb before flipping the preset live.
+#
+# Recipe source: vLLM Unlimited-OCR recipe (dedicated release image;
+# arch not in stable pip wheel, so no requirements.txt path).
+# Critical recipe bits, encoded below and in strip.py:
+# - n-gram logits processor REQUIRED, else long docs loop on <|det|> tokens
+# - prompt MUST start with a literal space (" document parsing.")
+# - skip_special_tokens=False (grounding tokens stripped client-side)
+# - prefix caching OFF, mm-processor cache 0 (no reuse benefit for OCR)
+name: unlimited-ocr
+services:
+  unlimited:
+    image: vllm/vllm-openai:unlimited-ocr
+    container_name: unlimited-ocr
+    env_file:
+      - path: .env # optional: HF_TOKEN=hf_... (higher HF Hub rate limits). Absent = anonymous.
+        required: false
+    environment:
+      - HF_HUB_CACHE=/root/.cache/huggingface
+      - TRITON_CACHE_DIR=/root/.cache/triton
+      - TORCHINDUCTOR_CACHE_DIR=/root/.cache/inductor
+    volumes:
+      - ./hf-cache:/root/.cache/huggingface # weights persist on host; resume across restarts
+      - ./hf-cache-awq:/root/.cache-awq # AWQ lane snapshot (lane 2)
+      - ./awq-fixed:/root/awq-fixed # surgical fix: position_ids buffer excised
+      - ./compile-cache:/root/.cache/triton # triton + inductor kernels persist; no recompile each start
+      - ./compile-cache-inductor:/root/.cache/inductor
+    command:
+      # Local snapshot path: fully offline-capable, never re-downloads.
+      # Refresh SNAP dir after any checkpoint change.
+      # awq-fixed: AWQ snapshot minus the position_ids buffer that crashes
+      # vLLM's DeepEncoder loader (recreated by buffer default). See surgery notes.
+      - /root/awq-fixed
+      - --served-model-name=baidu/Unlimited-OCR
+      - --quantization=compressed-tensors
+      - --trust-remote-code
+      - --logits_processors=vllm.model_executor.models.unlimited_ocr:NGramPerReqLogitsProcessor
+      - --no-enable-prefix-caching
+      - --mm-processor-cache-gb=0
+      - --tensor-parallel-size=1
+      - --gpu-memory-utilization=0.84
+      - --max-model-len=16384
+      - --max-num-seqs=1
+      - --enforce-eager
+      - --host=0.0.0.0
+      - --port=8000
+    ports:
+      - "127.0.0.1:8003:8000"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # First pull compiles/loads ~6GB BF16; give it room before health flips.
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 300s

@@ -1,0 +1,8 @@
+id: granite-docling
+version: 258M
+backend: vllm
+vram_gb: 0.5
+tier: tiny
+description: "Targeted prompts, DocTags, tables. Pairs with turbo-tiny."
+inputs: ["pdf", "image", "crop"]
+outputs: ["boxes", "markdown", "fields"]

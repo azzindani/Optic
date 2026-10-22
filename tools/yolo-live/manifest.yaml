@@ -1,0 +1,14 @@
+id: yolo-live
+version: yolo11n-seg
+backend: onnx
+# PROVISIONAL — confirm via nvidia-smi (6MB weights; expect ~0.5GB runtime).
+vram_gb: 0.5
+tier: tiny
+description: "Live tier: 200fps COCO instance masks + track IDs. Fast lane; SAM2 refines."
+inputs: ["image", "frame"]
+outputs: ["boxes"]
+sidecar:
+  env: YOLO_URL
+  health: "GET /health"
+  infer: "POST /infer {image_b64} -> {boxes: [{x,y,w,h,kind,label,conf}], tracks}"
+deploy: "v1: host process (python3 server.py, :8005) — ultralytics + torch cu126 on host. Containerize later."

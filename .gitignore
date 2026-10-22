@@ -1,0 +1,31 @@
+# Secrets, caches, local state — never commit.
+.env
+*.env
+tools/unlimited-ocr/.env
+
+# Pinned model weights + compiler kernels (GBs, re-download is slow).
+# Regenerate via tools/unlimited-ocr/surgery.py + snapshot_download, never commit.
+tools/unlimited-ocr/hf-cache/
+tools/unlimited-ocr/hf-cache-awq/
+tools/unlimited-ocr/awq-fixed/
+tools/unlimited-ocr/compile-cache/
+tools/unlimited-ocr/compile-cache-inductor/
+
+# Local databases and stored inputs.
+*.db
+*.db-journal
+data/
+inputs/
+
+# Build outputs and deps.
+node_modules/
+core/web/dist/
+dev_tools/node_modules/
+
+# Added for first push: scratch output, large third-party test PDFs, weights, caches.
+tmp/
+samples/
+*.pt
+__pycache__/
+*.pyc
+*:Zone.Identifier

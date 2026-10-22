@@ -1,0 +1,13 @@
+id: turbo-tiny
+version: "3.0"
+backend: tensorrt
+vram_gb: 4
+tier: tiny
+description: "Fast lane markdown and boxes. Live plus batch."
+inputs: ["pdf", "image", "frame"]
+outputs: ["boxes", "markdown"]
+sidecar:
+  env: TURBO_URL
+  health: /health
+  infer: "POST /ocr/raw (raw image bytes)"
+deploy: "Primary: TurboOCR Docker TensorRT on :8000 (engines cached in trt-cache volume). Fallback: server.py on onnxruntime-gpu. Same HTTP shape, switch via TURBO_URL."

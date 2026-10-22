@@ -1,0 +1,16 @@
+id: unlimited-ocr
+version: 3B-MoE
+backend: vllm
+# PROVISIONAL — confirm via nvidia-smi with turbo-tiny unloaded before
+# going live. Set to the full cap so the manager enforces exclusive-load
+# (4GB turbo resident + this must refuse; solo must fit exactly).
+vram_gb: 7
+tier: small
+description: "One-shot long-horizon parsing, 2-40 pages to markdown. Batch-only Long Contract lane. No boxes."
+inputs: ["pdf", "image"]
+outputs: ["markdown"]
+sidecar:
+  env: UNLIMITED_URL
+  health: "GET /health (vLLM)"
+  infer: "POST /v1/chat/completions (OpenAI shape, see compose.yaml + strip.py)"
+deploy: "Primary: vllm/vllm-openai:unlimited-ocr image on :8003 (compose.yaml). Ampere/sm_86: use vLLM path, NOT SGLang fa3 (Hopper-only). Exclusive-load: stop turboocr container first."
